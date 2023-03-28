@@ -1,7 +1,7 @@
 # Initial file for tests. Will be split as the number of tests grows.
 
-import sys
 import pytest
+import pandas as pd
 from sklearn.linear_model import LinearRegression 
 from futureunknown.regression import ForecasterMixin, PointRegressionForecaster
 
@@ -12,17 +12,17 @@ class Test_index_validator():
     def test_good_daily_index(self):
         """ Test a good daily index. """
         index = pd.date_range(start="2019-01-01", end="2019-01-31", freq="D")
-        assert ForecasterMixin()._validate_clean_index(index) == index
+        assert (ForecasterMixin()._validate_clean_index(index) == index).all()
     
     def test_good_monthly_index(self):
         """ Test a good monthly index. """
         index = pd.date_range(start="2019-01-01", end="2019-12-31", freq="M")
-        assert ForecasterMixin()._validate_clean_index(index) == index
+        assert (ForecasterMixin()._validate_clean_index(index) == index).all()
     
     def test_good_business_monthly_index(self):
         """ Test a good business monthly index. """
         index = pd.date_range(start="2019-01-01", end="2019-12-31", freq="BM")
-        assert ForecasterMixin()._validate_clean_index(index) == index
+        assert (ForecasterMixin()._validate_clean_index(index) == index).all()
     
     def test_bad_daily_index(self):
         """ Test a daily index in which dates are missing. """
