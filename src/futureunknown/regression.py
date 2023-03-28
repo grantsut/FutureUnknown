@@ -3,16 +3,17 @@
 Various forecasting models.
 """
 # Imports
-import numpy as np
-import pandas as pd
 import logging
-from sklearn.base import BaseEstimator, RegressorMixin
+
+import pandas as pd
+from sklearn.base import BaseEstimator
 
 logger = logging.getLogger(__name__)
 
+
 class ForecasterMixin():
 
-    def _validate_index(self, index):
+    def _validate_clean_index(self, index):
         """
         Validate the index of a pandas Series or DataFrame.
 
@@ -26,25 +27,36 @@ class ForecasterMixin():
         """
         if not isinstance(index, pd.DatetimeIndex):
             raise ValueError("The index must be a pandas DatetimeIndex.")
+
+        # Sort index and check again. If it is still not monotonic increasing, raise an error.
         if not index.is_monotonic_increasing:
-            raise ValueError("The index must be monotonic increasing.")
+            index = index.sort_values()
+            if index.is_monotonic_increasing:
+                logger.warning(
+                    "The index was not monotonic increasing, but was after sorting.")
+            else:
+                raise ValueError("The index must be monotonic increasing.")
         inferred_freq = pd.infer_freq(index)
         if index.freq is None:
             if inferred_freq is None:
-                raise ValueError("Index freq is not set and could not be inferred.")
+                raise ValueError(
+                    "Index freq is not set and could not be inferred.")
             else:
                 logger.warning(
-                    f"Index freq is not set, but could be inferred. Setting it to the inferred value of{inferred_freq}.")
+                    "Index freq is not set, but could be inferred. Setting it to the inferred value of %s.",
+                    inferred_freq
+                )
                 index.freq = inferred_freq
         elif index.freq != inferred_freq:
-            logger.warning(f"Index freq is set to {index.freq}, but was inferred as {inferred_freq}.")
+            logger.warning(
+                "Index freq is set to %s, but was inferred as %s.", index.freq, inferred_freq)
         return index
 
 
-class PointRegressionForecaster(BaseEstimator, ForecasterMixin):
+class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
     """
     Wrapper that facilitates using a regression model with a scikit-learn-like API to forecast a time series. This class
-    uses pandas datetime indices to align the target and predictor series, shift the target time series before fitting 
+    uses pandas datetime indices to align the target and predictor series, shift the target time series before fitting
     the regression model, and correctly index the predictions with the date / time being forecast. The number of points
     ahead to forecast is specified by the "step" argument during initialization.
 
@@ -68,8 +80,8 @@ class PointRegressionForecaster(BaseEstimator, ForecasterMixin):
     current value of the series and the future value. The value returned by the .predict() method is
     <current value> + <predicted change>.
 
-    No base forecast and forecast_type=="diff_multiplicative": the regressor forecasts the ratio of the future value of the
-    series to the current value. The value returned by the .predict() method is <current value> * <predicted ratio>.
+    No base forecast and forecast_type=="diff_multiplicative": the regressor forecasts the ratio of the future value of
+    the series to the current value. The value returned by the .predict() method is <current value> * <predicted ratio>.
 
     Base forecast and forecast_type=="base_additive": the regressor forecasts the absolute difference between the
     value of the series forecast by the base forecaster and the true future value. The value returned by the .predict()
@@ -96,6 +108,7 @@ class PointRegressionForecaster(BaseEstimator, ForecasterMixin):
         self.step = step
         self.forecast_type = forecast_type
         self.base_forecast_prefix = base_forecast_column
+        self.last_predictors = None
 
     def fit(self, predictors, target):
         """
@@ -107,9 +120,9 @@ class PointRegressionForecaster(BaseEstimator, ForecasterMixin):
         target: a pandas Series with the target. The index must be a pandas DatetimeIndex.
         """
         # Validate the index of the predictors
-        predictors.index = self._validate_index(predictors.index)
+        predictors.index = self._validate_clean_index(predictors.index)
         # Validate the index of the target
-        predictors.index = self._validate_index(target.index)
+        predictors.index = self._validate_clean_index(target.index)
         # Shift the target
         target = target.shift(-self.step).dropna()
         # Store the last values of the predictors
