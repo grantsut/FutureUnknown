@@ -4,6 +4,7 @@ Various forecasting models.
 """
 # Imports
 import logging
+import warnings
 
 import pandas as pd
 from sklearn.base import BaseEstimator
@@ -163,3 +164,42 @@ class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
         predictions = pd.DataFrame(
             data=predictions, index=index, columns=columns)
         return predictions
+
+    def fit_predict(self, predictors, target):
+        """
+        Fit the forecaster and predict the target series.
+        """
+        self.fit(predictors, target)
+        return self.predict()
+
+    class MultiPointRegressionForecaster(ForecasterMixin, BaseEstimator):
+        """
+        Contains multiple instances of PointRegressionForecaster which forecast up to a specific forecast horizon
+        using a specific stride.
+        """
+
+        def __init__(self, regressor, horizon, stride: int = 1, forecast_type: str = "absolute", base_forecast_column=None):
+            self.regressor = regressor
+            self.horizon = horizon
+            self.stride = stride
+            self.forecast_type = forecast_type
+            self.base_forecast_prefix = base_forecast_column
+
+            # Check that stride is a factor of horizon, raise an error if not.
+            if self.stride % self.horizon != 0:
+                raise ValueError("Stride must be a factor of horizon.")
+
+            # Create a list of instances of PointRegressionForecaster with their step parameter corresponding to the
+            # horizon and stride.
+            for step in range(stride, horizon+1, stride):
+                self.forecasters = []
+                self.forecasters.append(PointRegressionForecaster(
+                    regressor, step=step, forecast_type=forecast_type, base_forecast_column=base_forecast_column))
+            
+        def fit(self, X, y):
+            for forecaster in self.forecasters:
+                forecaster.fit(X, y)
+        
+        def predict(self, X):
+            predictions = [forecaster.predict(X) for forecaster in self.forecasters]
+            return pd.concat(predictions, axis=0)
