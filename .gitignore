@@ -77,7 +77,7 @@ target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-.ipynb
+*.ipynb
 
 # IPython
 profile_default/
@@ -162,4 +162,4 @@ cython_debug/
 
 # Random other project files
 notebooks/jupytext.toml
-notebooks/scratchpad.ipynb
+notebooks/scratchpad.
