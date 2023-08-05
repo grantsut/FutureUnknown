@@ -3,6 +3,7 @@
 Various forecasting models.
 """
 # Imports
+import copy
 import logging
 import warnings
 
@@ -33,7 +34,7 @@ class ForecasterMixin():
         if not index.is_monotonic_increasing:
             index = index.sort_values()
             if index.is_monotonic_increasing:
-                logger.warning(
+                warnings.warn(
                     "The index was not monotonic increasing, but was after sorting.")
             else:
                 raise ValueError("The index must be monotonic increasing.")
@@ -43,13 +44,11 @@ class ForecasterMixin():
                 raise ValueError(
                     "Index freq is not set and could not be inferred.")
             else:
-                logger.warning(
-                    "Index freq is not set, but could be inferred. Setting it to the inferred value of %s.",
-                    inferred_freq
-                )
+                warnings.warn(
+                    f"Index freq is not set, but could be inferred. Setting it to the inferred value of {inferred_freq}."                )
                 index.freq = inferred_freq
         elif index.freq != inferred_freq:
-            logger.warning(
+            warnings.warn(
                 "Index freq is set to %s, but was inferred as %s.", index.freq, inferred_freq)
         return index
 
@@ -72,7 +71,7 @@ class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
     -----------------
 
     This class offers multiple strategies for forecasting, which are set by the "forecast_type" initialization argument
-    and the use or not of a base forecast, which is activated by the "base_forecast_prefix" initialization argument.
+    and the use or not of a base forecast, which is activated by the "base_forecast_column" initialization argument.
 
     forecast_type=="absolute": the regressor forecasts the absolute value of the target series.
 
@@ -105,10 +104,10 @@ class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
         base_forecast_column: if not None, the prefix of the column in the predictors DataFrame that contains the
             base forecast. See the class documentation for details.
         """
-        self.regressor = regressor
+        self.regressor = copy.deepcopy(regressor)   # Regressor is copied to avoid being used by multiple forecasters
         self.step = step
         self.forecast_type = forecast_type
-        self.base_forecast_prefix = base_forecast_column
+        self.base_forecast_column = base_forecast_column
         self.last_predictors = None
 
     def fit(self, predictors, target):
@@ -172,34 +171,68 @@ class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
         self.fit(predictors, target)
         return self.predict()
 
-    class MultiPointRegressionForecaster(ForecasterMixin, BaseEstimator):
-        """
-        Contains multiple instances of PointRegressionForecaster which forecast up to a specific forecast horizon
-        using a specific stride.
-        """
 
-        def __init__(self, regressor, horizon, stride: int = 1, forecast_type: str = "absolute", base_forecast_column=None):
-            self.regressor = regressor
-            self.horizon = horizon
-            self.stride = stride
-            self.forecast_type = forecast_type
-            self.base_forecast_prefix = base_forecast_column
+class MultiPointRegressionForecaster(ForecasterMixin):
+    """
+    Contains multiple instances of PointRegressionForecaster which forecast up to a specific forecast horizon
+    using a specific stride.
+    """
 
-            # Check that stride is a factor of horizon, raise an error if not.
-            if self.stride % self.horizon != 0:
-                raise ValueError("Stride must be a factor of horizon.")
+    def __init__(self, regressor, horizon, stride: int = 1, forecast_type: str = "absolute", base_forecast_column=None):
+        self.regressor = regressor
+        self.horizon = horizon
+        self.stride = stride
+        self.forecast_type = forecast_type
+        self.base_forecast_column = base_forecast_column
 
-            # Create a list of instances of PointRegressionForecaster with their step parameter corresponding to the
-            # horizon and stride.
-            for step in range(stride, horizon+1, stride):
-                self.forecasters = []
-                self.forecasters.append(PointRegressionForecaster(
-                    regressor, step=step, forecast_type=forecast_type, base_forecast_column=base_forecast_column))
-            
-        def fit(self, X, y):
-            for forecaster in self.forecasters:
-                forecaster.fit(X, y)
+        # Check that stride is a factor of horizon, raise an error if not.
+        if self.horizon % self.stride != 0:
+            raise ValueError("Stride must be a factor of horizon.")
+
+        # Create a list of instances of PointRegressionForecaster with their step parameter corresponding to the
+        # horizon and stride.
+        self.forecasters = []
+        for step in range(stride, horizon+1, stride):
+            self.forecasters.append(PointRegressionForecaster(
+                regressor, step=step, forecast_type=forecast_type, base_forecast_column=base_forecast_column))
         
-        def predict(self, X):
-            predictions = [forecaster.predict(X) for forecaster in self.forecasters]
-            return pd.concat(predictions, axis=0)
+    def fit(self, X, y):
+        """
+        Fits the forecaster to the training data.
+
+        Parameters:
+            X (array-like): The input data.
+            y (array-like): The target values.
+
+        Returns:
+            None
+        """
+        for forecaster in self.forecasters:
+            forecaster.fit(X, y)
+    
+    def predict(self, X=None):
+        """
+        Predicts the values using the specified input data.
+
+        Parameters:
+            X (DataFrame, optional): The input data for prediction. If not provided, the function uses the internal
+            data stored in the object, which corresponds to the last timepoint in the training data.
+        
+        Raises:
+            ValueError: If multiple rows of X are provided (method currently only supports forecasts from a single
+            start date).
+        
+        Returns:
+            forecast (Series): The predicted values.
+        """
+        if X is not None and X.shape[0] > 1:
+            raise ValueError(
+                "Forecasting from more than one start dates not currently supported. X must be a single row."
+                )
+        predictions = {}
+        for forecaster in self.forecasters:
+            prediction = forecaster.predict(X)
+            predictions[prediction.index[0]] = prediction.values[0][0]
+        forecast = pd.Series(predictions, name="forecast")
+        
+        return forecast
