@@ -6,6 +6,7 @@ Various forecasting models.
 import copy
 import logging
 import warnings
+from collections.abc import Container
 
 import pandas as pd
 from sklearn.base import BaseEstimator
@@ -45,12 +46,30 @@ class ForecasterMixin():
                     "Index freq is not set and could not be inferred.")
             else:
                 warnings.warn(
-                    f"Index freq is not set, but could be inferred. Setting it to the inferred value of {inferred_freq}."                )
+                    f"Index freq is not set, but could be inferred. Setting it to the inferred value of {inferred_freq}.")
                 index.freq = inferred_freq
         elif index.freq != inferred_freq:
             warnings.warn(
                 "Index freq is set to %s, but was inferred as %s.", index.freq, inferred_freq)
         return index
+
+    def __repr__(self):
+        def filter_containers(d):
+            ''' This iterates through a dict and returns a dict of its elements minus any that are containers.
+            Strings are also returned, although they are a type of container. '''
+            def iscontainer(x):
+                if isinstance(x, str):
+                    return False
+                elif isinstance(x, Container):
+                    return True
+                else:
+                    return False
+
+            return {k: v for k, v in d.items() if not iscontainer(v)}
+        attributes_string = [f"{k}={v}" for k,
+                             v in filter_containers(vars(self)).items()]
+        attributes_string = ", ".join(attributes_string)
+        return f"{self.__class__.__name__}({attributes_string})"
 
 
 class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
@@ -104,7 +123,8 @@ class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
         base_forecast_column: if not None, the prefix of the column in the predictors DataFrame that contains the
             base forecast. See the class documentation for details.
         """
-        self.regressor = copy.deepcopy(regressor)   # Regressor is copied to avoid being used by multiple forecasters
+        self.regressor = copy.deepcopy(
+            regressor)   # Regressor is copied to avoid being used by multiple forecasters
         self.step = step
         self.forecast_type = forecast_type
         self.base_forecast_column = base_forecast_column
@@ -178,7 +198,7 @@ class MultiPointRegressionForecaster(ForecasterMixin):
     using a specific stride.
     """
 
-    def __init__(self, regressor, horizon, stride: int = 1, forecast_type: str = "absolute", base_forecast_column=None):
+    def __init__(self, regressor, horizon: int, stride: int = 1, forecast_type: str = "absolute", base_forecast_column=None):
         self.regressor = regressor
         self.horizon = horizon
         self.stride = stride
@@ -195,7 +215,7 @@ class MultiPointRegressionForecaster(ForecasterMixin):
         for step in range(stride, horizon+1, stride):
             self.forecasters.append(PointRegressionForecaster(
                 regressor, step=step, forecast_type=forecast_type, base_forecast_column=base_forecast_column))
-        
+
     def fit(self, X, y):
         """
         Fits the forecaster to the training data.
@@ -209,7 +229,7 @@ class MultiPointRegressionForecaster(ForecasterMixin):
         """
         for forecaster in self.forecasters:
             forecaster.fit(X, y)
-    
+
     def predict(self, X=None):
         """
         Predicts the values using the specified input data.
@@ -217,22 +237,22 @@ class MultiPointRegressionForecaster(ForecasterMixin):
         Parameters:
             X (DataFrame, optional): The input data for prediction. If not provided, the function uses the internal
             data stored in the object, which corresponds to the last timepoint in the training data.
-        
+
         Raises:
             ValueError: If multiple rows of X are provided (method currently only supports forecasts from a single
             start date).
-        
+
         Returns:
             forecast (Series): The predicted values.
         """
         if X is not None and X.shape[0] > 1:
             raise ValueError(
                 "Forecasting from more than one start dates not currently supported. X must be a single row."
-                )
+            )
         predictions = {}
         for forecaster in self.forecasters:
             prediction = forecaster.predict(X)
             predictions[prediction.index[0]] = prediction.values[0][0]
         forecast = pd.Series(predictions, name="forecast")
-        
+
         return forecast
