@@ -14,8 +14,7 @@ from sklearn.base import BaseEstimator
 logger = logging.getLogger(__name__)
 
 
-class ForecasterMixin():
-
+class ForecasterMixin:
     def _validate_clean_index(self, index):
         """
         Validate the index of a pandas Series or DataFrame.
@@ -36,27 +35,35 @@ class ForecasterMixin():
             index = index.sort_values()
             if index.is_monotonic_increasing:
                 warnings.warn(
-                    "The index was not monotonic increasing, but was after sorting.")
+                    "The index was not monotonic increasing, but was after sorting."
+                )
             else:
                 raise ValueError("The index must be monotonic increasing.")
         inferred_freq = pd.infer_freq(index)
         if index.freq is None:
             if inferred_freq is None:
-                raise ValueError(
-                    "Index freq is not set and could not be inferred.")
+                raise ValueError("Index freq is not set and could not be inferred.")
             else:
                 warnings.warn(
-                    f"Index freq is not set, but could be inferred. Setting it to the inferred value of {inferred_freq}.")
+                    (
+                        "Index freq is not set, but could be inferred. Setting it to the inferred value of "
+                        f"{inferred_freq}."
+                    )
+                )
                 index.freq = inferred_freq
         elif index.freq != inferred_freq:
             warnings.warn(
-                "Index freq is set to %s, but was inferred as %s.", index.freq, inferred_freq)
+                "Index freq is set to %s, but was inferred as %s.",
+                index.freq,
+                inferred_freq,
+            )
         return index
 
     def __repr__(self):
         def filter_containers(d):
-            ''' This iterates through a dict and returns a dict of its elements minus any that are containers.
-            Strings are also returned, although they are a type of container. '''
+            """This iterates through a dict and returns a dict of its elements minus any that are containers.
+            Strings are also returned, although they are a type of container."""
+
             def iscontainer(x):
                 if isinstance(x, str):
                     return False
@@ -66,8 +73,10 @@ class ForecasterMixin():
                     return False
 
             return {k: v for k, v in d.items() if not iscontainer(v)}
-        attributes_string = [f"{k}={v}" for k,
-                             v in filter_containers(vars(self)).items()]
+
+        attributes_string = [
+            f"{k}={v}" for k, v in filter_containers(vars(self)).items()
+        ]
         attributes_string = ", ".join(attributes_string)
         return f"{self.__class__.__name__}({attributes_string})"
 
@@ -111,7 +120,13 @@ class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
     <base forecast> * <predicted correction>.
     """
 
-    def __init__(self, regressor, step: int = 1, forecast_type: str = "absolute", base_forecast_column=None):
+    def __init__(
+        self,
+        regressor,
+        step: int = 1,
+        forecast_type: str = "absolute",
+        base_forecast_column=None,
+    ):
         """
         Initialize the forecaster.
 
@@ -124,7 +139,8 @@ class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
             base forecast. See the class documentation for details.
         """
         self.regressor = copy.deepcopy(
-            regressor)   # Regressor is copied to avoid being used by multiple forecasters
+            regressor
+        )  # Regressor is copied to avoid being used by multiple forecasters
         self.step = step
         self.forecast_type = forecast_type
         self.base_forecast_column = base_forecast_column
@@ -180,8 +196,7 @@ class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
         index = predictors.index + self.step * predictors.index.freq
         columns = [f"forecast_lead{self.step}"]
         # Create a pandas DataFrame with the predictions
-        predictions = pd.DataFrame(
-            data=predictions, index=index, columns=columns)
+        predictions = pd.DataFrame(data=predictions, index=index, columns=columns)
         return predictions
 
     def fit_predict(self, predictors, target):
@@ -198,7 +213,14 @@ class MultiPointRegressionForecaster(ForecasterMixin):
     using a specific stride.
     """
 
-    def __init__(self, regressor, horizon: int, stride: int = 1, forecast_type: str = "absolute", base_forecast_column=None):
+    def __init__(
+        self,
+        regressor,
+        horizon: int,
+        stride: int = 1,
+        forecast_type: str = "absolute",
+        base_forecast_column=None,
+    ):
         self.regressor = regressor
         self.horizon = horizon
         self.stride = stride
@@ -212,9 +234,15 @@ class MultiPointRegressionForecaster(ForecasterMixin):
         # Create a list of instances of PointRegressionForecaster with their step parameter corresponding to the
         # horizon and stride.
         self.forecasters = []
-        for step in range(stride, horizon+1, stride):
-            self.forecasters.append(PointRegressionForecaster(
-                regressor, step=step, forecast_type=forecast_type, base_forecast_column=base_forecast_column))
+        for step in range(stride, horizon + 1, stride):
+            self.forecasters.append(
+                PointRegressionForecaster(
+                    regressor,
+                    step=step,
+                    forecast_type=forecast_type,
+                    base_forecast_column=base_forecast_column,
+                )
+            )
 
     def fit(self, X, y):
         """
