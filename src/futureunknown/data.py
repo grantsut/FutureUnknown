@@ -4,7 +4,7 @@ from scipy.interpolate import UnivariateSpline
 import pandas as pd
 
 
-def create_lagged_values(df, n, column: str = None):
+def create_lagged_values(df, n_lags, column: str = None):
     """
     Create lagged values of a specified column in a DataFrame.
 
@@ -27,7 +27,7 @@ def create_lagged_values(df, n, column: str = None):
                 "Column name must be provided if more than one column is provided."
             )
         column = df.columns[0]
-    for i in range(1, n + 1):
+    for i in range(1, n_lags + 1):
         df[f"{column}_lag{i}"] = df[column].shift(i)
     return df
 
@@ -42,7 +42,7 @@ def smooth_forecast_univariate(
     **kwargs,
 ) -> pd.Series:
     """
-    Smoothens a univariate time series (forecast or any series) using UnivariateSpline.
+    Smoothens a univariate time series (forecast or any series) using UnivariateSpline from scipy.interpolate.
 
     Parameters:
         forecast (Series): The time series to be smoothened.
@@ -51,6 +51,7 @@ def smooth_forecast_univariate(
                                         Defaults to 1.
         freq (str, optional): Frequency of the time series. If not provided, it will be inferred.
         k (int, optional): Degree of the spline. Defaults to 2.
+        **kwargs: Keyword arguments passed to UnivariateSpline.
 
     Returns:
         Series: The smoothened series.
