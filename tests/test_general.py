@@ -9,7 +9,8 @@ from futureunknown.regression import (
     PointRegressionForecaster,
     MultiPointRegressionForecaster,
 )
-from futureunknown.data import create_lagged_values
+
+from futureunknown.data import create_lagged_values, smooth_forecast_univariate
 
 
 class Test_index_validator:
@@ -51,29 +52,76 @@ class Test_index_validator:
         assert index.is_monotonic_increasing
 
 
-# Test feature engineering code
-def test_create_lagged_values():
-    # Case 1: DataFrame has only one column and no column name is provided
-    df_single_col = pd.DataFrame({"a": range(10)})
-    result = create_lagged_values(df_single_col, 2)
-    assert list(result.columns) == ["a", "a_lag1", "a_lag2"]
+class Test_forecaster_accuracy:
+    """Tests for evaluating the accuracy of the forecaster."""
 
-    # Case 2: DataFrame has more than one column and a column name is provided
-    df_multi_col = pd.DataFrame({"a": range(10), "b": range(10, 20)})
-    result = create_lagged_values(df_multi_col, 2, "a")
-    assert list(result.columns) == ["a", "b", "a_lag1", "a_lag2"]
+    def test_linear_trend(self):
+        """Basic test of accurate output with a LinearRegression forecaster."""
+        model = MultiPointRegressionForecaster(
+            LinearRegression(), horizon=3, stride=1, forecast_type="absolute"
+        )
 
-    # Case 3: DataFrame has more than one column and no column name is provided
-    with pytest.raises(ValueError):
-        create_lagged_values(df_multi_col, 2)
+        X = pd.DataFrame(
+            data=list(range(10)),
+            index=pd.date_range("2023-01-01", periods=10),
+            columns=["a"],
+        )
+        X = create_lagged_values(X, 4, "a").dropna()
+        y = X.iloc[:, 0]
 
-    # Case 4: DataFrame has only one column and the column name provided doesn't exist in the DataFrame
-    with pytest.raises(KeyError):
-        create_lagged_values(df_single_col, 2, "b")
+        model.fit(X, y)
+        predictions = model.predict()
+        assert np.allclose(predictions, [10, 11, 12])
+
+
+class Test_smooth_forecast_univariate:
+    """Tests for smooth_forecast_univariate()."""
+
+    def test_basic_forecast_only(self):
+        """Test that output of the correct length is created."""
+        forecast = pd.Series(
+            [1, 2, 3, 4, 5], index=pd.date_range("2023-01-01", periods=5)
+        )
+        smoothed = smooth_forecast_univariate(forecast, freq="D")
+        assert len(smoothed) == len(forecast)
+
+    def test_with_historical(self):
+        """Test that output of the correct length is created when smoothing the forecast and the end of a historical
+        series."""
+        historical = pd.Series(
+            [0.5, 0.75, 1], index=pd.date_range(start="2023-01-01", periods=3, freq="D")
+        )
+        forecast = pd.Series(
+            [2, 3, 4, 5], index=pd.date_range(start="2023-01-04", periods=4, freq="D")
+        )
+        smoothed = smooth_forecast_univariate(
+            forecast, historical=historical, include_last_n=2
+        )
+        assert len(smoothed) == len(forecast) + 2
+
+    def test_without_specifying_freq(self):
+        """Test that an error is raised if the frequency is not specified and can not be inferred. """
+        forecast = pd.Series(
+            [1, 2, 3, 4, 5, 6], index=pd.date_range("2023-01-01", periods=6)
+        )
+        forecast = forecast[[0, 2, 5]]
+        with pytest.raises(ValueError):
+            smooth_forecast_univariate(forecast)
+
+    def test_output_frequency(self):
+        """ Test that interpolation works correctly. """
+        forecast = pd.Series(
+            [1, 2, 3, 4, 5],
+            index=pd.date_range(start="2023-01-01", periods=5, freq="2D"),
+        )
+        smoothed = smooth_forecast_univariate(forecast, freq="D")
+        inferred_freq = pd.infer_freq(smoothed.index)
+        assert inferred_freq == "D"
 
 
 # Test the PointRegressionForecaster class.
 def test_point_regression_forecaster():
+    """Test the functionality of the PointRegressionForecaster."""
     # Initialize a Linear Regression model
     model = LinearRegression()
 
@@ -96,6 +144,7 @@ def test_point_regression_forecaster():
 
 
 def test_multi_point_regression_forecaster():
+    """Test the functionality of the MultiPointRegressionForecaster."""
     # Initialize a Linear Regression model
     model = LinearRegression()
 
@@ -122,24 +171,22 @@ def test_multi_point_regression_forecaster():
         forecaster = MultiPointRegressionForecaster(model, horizon=5, stride=2)
 
 
-class test_forecaster_accuracy:
-    def test_linear_trend():
-        # Baseic test of accurate output with a LinearRegression forecaster
-        from futureunknown import regression
-        from sklearn.linear_model import LinearRegression
+def test_create_lagged_values():
+    """Test the creation of lagged values for a given dataset."""
+    # Case 1: DataFrame has only one column and no column name is provided
+    df_single_col = pd.DataFrame({"a": range(10)})
+    result = create_lagged_values(df_single_col, 2)
+    assert list(result.columns) == ["a", "a_lag1", "a_lag2"]
 
-        model = regression.MultiPointRegressionForecaster(
-            LinearRegression(), horizon=3, stride=1, forecast_type="absolute"
-        )
+    # Case 2: DataFrame has more than one column and a column name is provided
+    df_multi_col = pd.DataFrame({"a": range(10), "b": range(10, 20)})
+    result = create_lagged_values(df_multi_col, 2, "a")
+    assert list(result.columns) == ["a", "b", "a_lag1", "a_lag2"]
 
-        X = pd.DataFrame(
-            data=list(range(10)),
-            index=pd.date_range("2023-01-01", periods=10),
-            columns=["a"],
-        )
-        X = create_lagged_values(X, 4, "a").dropna()
-        y = X.iloc[:, 0]
+    # Case 3: DataFrame has more than one column and no column name is provided
+    with pytest.raises(ValueError):
+        create_lagged_values(df_multi_col, 2)
 
-        model.fit(X, y)
-        predictions = model.predict()
-        assert np.allclose(predictions, [10, 11, 12])
+    # Case 4: DataFrame has only one column and the column name provided doesn't exist in the DataFrame
+    with pytest.raises(KeyError):
+        create_lagged_values(df_single_col, 2, "b")
