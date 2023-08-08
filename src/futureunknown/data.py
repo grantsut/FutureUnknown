@@ -62,14 +62,16 @@ def smooth_forecast_univariate(
     # Check and set frequency
     if freq is None:
         freq = (
-            forecast.index.freq or historical.index.freq
+            historical.index.freq or pd.infer_freq(historical.index)
             if historical is not None
             else None
         )
-        if freq is None:
-            raise ValueError(
-                "Output frequency must either be specified or inferable from the provided input series."
-            )
+    if freq is None:
+        freq = forecast.index.freq or pd.infer_freq(forecast.index)
+    if freq is None:
+        raise ValueError(
+            "Output frequency must either be specified or inferable from the provided input series."
+        )
 
     # Prepare data for the spline fitting
     if historical is not None and include_last_n > 0:
