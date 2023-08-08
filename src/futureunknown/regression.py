@@ -153,8 +153,12 @@ class PointRegressionForecaster(ForecasterMixin, BaseEstimator):
         Parameters
         ----------
         predictors: a pandas DataFrame with the predictors. The index must be a pandas DatetimeIndex.
-        target: a pandas Series with the target. The index must be a pandas DatetimeIndex.
+        target: Either a pandas Series with the series to be forecast, or a string with the name of a column in the
+        predictors DataFrame.
         """
+        # If target is a string, extract this column from the predictors.
+        if isinstance(target, str):
+            target = predictors[target]
         # Validate the index of the predictors
         predictors.index = self._validate_clean_index(predictors.index)
         # Validate the index of the target
