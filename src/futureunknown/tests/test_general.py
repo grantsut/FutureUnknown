@@ -48,7 +48,7 @@ class Test_index_validator:
         """Test that an incorrectly-sorted index is fixed."""
         index = pd.date_range(start="2019-01-01", end="2019-01-31", freq="D")
         index = index[::-1]
-        index = ForecasterMixin()._validate_clean_index(index)
+        index = ForecasterMixin()._validate_clean_index(index, warn=False)
         assert index.is_monotonic_increasing
 
 
@@ -104,7 +104,7 @@ class Test_smooth_forecast_univariate:
         forecast = pd.Series(
             [1, 2, 3, 4, 5, 6], index=pd.date_range("2023-01-01", periods=6)
         )
-        forecast = forecast[[0, 2, 5]]
+        forecast = forecast.iloc[[0, 2, 5]]
         with pytest.raises(ValueError):
             smooth_forecast_univariate(forecast)
 
