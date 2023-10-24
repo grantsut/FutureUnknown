@@ -166,3 +166,6 @@ cython_debug/
 # Random other project files
 notebooks/jupytext.toml
 notebooks/scratchpad.
+
+# Don't track data (for now)
+data/*
