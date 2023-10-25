@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class ForecasterMixin:
-    def _validate_clean_index(self, index):
+    def _validate_clean_index(self, index, warn=False):
         """
         Validate the index of a pandas Series or DataFrame.
 
@@ -34,9 +34,10 @@ class ForecasterMixin:
         if not index.is_monotonic_increasing:
             index = index.sort_values()
             if index.is_monotonic_increasing:
-                warnings.warn(
-                    "The index was not monotonic increasing, but was after sorting."
-                )
+                if warn:
+                    warnings.warn(
+                        "The index was not monotonic increasing, but was after sorting."
+                    )
             else:
                 raise ValueError("The index must be monotonic increasing.")
         inferred_freq = pd.infer_freq(index)
